@@ -1,0 +1,1357 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Posevent Region Editor</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { height: 100%; overflow: hidden; }
+body {
+  font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  background: #1e1e2e; color: #cdd6f4;
+  display: flex; flex-direction: column;
+}
+
+/* ── Toolbar ─────────────────────── */
+#toolbar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 12px; background: #181825;
+  border-bottom: 1px solid #313244;
+  flex-shrink: 0; flex-wrap: wrap;
+}
+#toolbar .spacer { flex: 1; }
+#toolbar button {
+  padding: 4px 12px; border: 1px solid #45475a; border-radius: 4px;
+  background: #313244; color: #cdd6f4; cursor: pointer; font-size: 12px;
+}
+#toolbar button:hover { background: #45475a; }
+#toolbar button.active { background: #45475a; border-color: #89b4fa; }
+#toolbar button.danger { color: #f38ba8; border-color: #f38ba8; }
+#toolbar label { color: #6c7086; font-size: 11px; cursor: pointer; display: flex; align-items: center; gap: 3px; }
+#toolbar label input { vertical-align: middle; accent-color: #89b4fa; }
+#toolbar input[type="text"],
+#toolbar select {
+  height: 24px; padding: 2px 6px; border: 1px solid #45475a; border-radius: 4px;
+  background: #11111b; color: #cdd6f4; font-size: 11px; min-width: 0;
+}
+#toolbar input[type="range"] { width: 72px; accent-color: #89b4fa; }
+#toolbar .api-input { width: 160px; }
+#toolbar .source-url { width: 210px; }
+#toolbar .source-device { width: 96px; }
+#toolbar .filename { color: #585b70; font-size: 11px; }
+#toolbar .filepath { color: #585b70; font-size: 10px; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#status {
+  font-size: 11px; padding: 2px 8px; border-radius: 3px;
+  transition: opacity 0.3s; white-space: nowrap;
+}
+#status.ok { color: #a6e3a1; }
+#status.err { color: #f38ba8; background: #f38ba818; }
+#status.warn { color: #f9e2af; background: #f9e2af18; }
+
+/* ── Main layout ─────────────────── */
+#main { display: flex; flex: 1; min-height: 0; }
+
+/* ── Canvas ──────────────────────── */
+#canvas-wrap {
+  flex: 1; position: relative; overflow: hidden;
+  background: #11111b;
+}
+#canvas-wrap canvas {
+  display: block; width: 100%; height: 100%;
+  cursor: default;
+}
+#canvas-hint {
+  position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%);
+  color: #585b70; font-size: 11px; pointer-events: none;
+  white-space: nowrap; text-shadow: 0 0 4px #11111b;
+}
+
+/* ── Editor panel ────────────────── */
+#panel {
+  width: 340px; flex-shrink: 0;
+  display: flex; flex-direction: column;
+  border-left: 1px solid #313244;
+  background: #1e1e2e;
+}
+
+/* Region tabs */
+#region-tabs {
+  display: flex; flex-wrap: wrap; gap: 2px;
+  padding: 8px 8px 4px; flex-shrink: 0;
+}
+.region-tab {
+  padding: 3px 10px; border: 1px solid #45475a; border-radius: 4px;
+  background: #313244; color: #a6adc8; cursor: pointer;
+  font-size: 11px; white-space: nowrap;
+}
+.region-tab:hover { background: #45475a; }
+.region-tab.active { background: #89b4fa; color: #1e1e2e; border-color: #89b4fa; }
+.region-tab.has-err { border-color: #f38ba8; color: #f38ba8; }
+
+/* Form */
+#form-scroll { flex: 1; overflow-y: auto; padding: 8px 12px; }
+.form-section { margin-bottom: 12px; }
+.form-section h3 {
+  font-size: 11px; font-weight: 600; text-transform: uppercase;
+  color: #6c7086; margin-bottom: 6px; letter-spacing: 0.5px;
+}
+.form-row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.form-row label { font-size: 12px; color: #a6adc8; width: 40px; flex-shrink: 0; }
+.form-row input[type="number"],
+.form-row input[type="text"],
+.form-row select {
+  flex: 1; padding: 3px 6px;
+  border: 1px solid #45475a; border-radius: 3px;
+  background: #313244; color: #cdd6f4; font-size: 12px; min-width: 0;
+}
+.form-row input[type="number"] { width: 60px; flex: none; }
+.form-row input[type="number"].wide { width: 80px; }
+.form-row input[type="checkbox"] { accent-color: #89b4fa; }
+.form-row input:focus, .form-row select:focus { outline: none; border-color: #89b4fa; }
+.form-row .hint { color: #585b70; font-size: 10px; }
+.form-row .field-err { color: #f38ba8; font-size: 10px; }
+
+/* Classes tags */
+.class-tags { display: flex; flex-wrap: wrap; gap: 4px; margin: 2px 0; }
+.class-tag {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 1px 6px; border-radius: 3px;
+  background: #45475a; font-size: 11px;
+}
+.class-tag .remove { cursor: pointer; color: #f38ba8; font-weight: bold; }
+.class-tag .remove:hover { color: #fab387; }
+.class-add { font-size: 11px; color: #89b4fa; cursor: pointer; }
+.class-add:hover { text-decoration: underline; }
+
+/* Event rules */
+.event-rules { margin-top: 4px; }
+.event-rule {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 6px; margin-bottom: 2px;
+  background: #181825; border-radius: 3px;
+}
+.event-rule .ev-name { font-size: 11px; color: #a6adc8; width: 80px; flex-shrink: 0; }
+.event-rule select { padding: 1px 4px; border: 1px solid #45475a; border-radius: 2px;
+  background: #313244; color: #cdd6f4; font-size: 11px; }
+
+/* Empty / no-selection */
+#panel .empty-state {
+  display: flex; flex: 1; align-items: center; justify-content: center;
+  color: #585b70; font-size: 12px; text-align: center; padding: 40px 20px;
+}
+.empty-state step { color: #6c7086; }
+.empty-state kbd {
+  display: inline-block; padding: 1px 5px; border-radius: 3px;
+  background: #313244; font-size: 10px; font-family: monospace;
+}
+
+/* Validation panel */
+#val-errors {
+  flex-shrink: 0; padding: 6px 12px; border-top: 1px solid #313244;
+  background: #181825; max-height: 100px; overflow-y: auto;
+  display: none;
+}
+#val-errors.show { display: block; }
+#val-errors .val-title { font-size: 11px; font-weight: 600; color: #f38ba8; margin-bottom: 2px; }
+#val-errors .val-item { font-size: 11px; color: #f38ba8; margin-left: 12px; }
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <button id="btnLoad" title="Open regions.json">📂 Open</button>
+  <button id="btnSave" title="Save regions.json">💾 Save</button>
+  <button id="btnBg" title="Load image file as canvas background">🖼 Bg</button>
+  <button id="btnCapture" title="从摄像头/RTSP 抓一帧作为背景图（需 region-server）">📷 抓帧</button>
+  <select id="captureSource" title="抓帧源">
+    <option value="camera">V4L2</option>
+    <option value="rtsp" selected>RTSP</option>
+    <option value="file">File</option>
+  </select>
+  <input id="captureDevice" class="source-device" type="text" value="/dev/video41" title="V4L2 设备或 file 路径">
+  <input id="captureUrl" class="source-url" type="text" value="rtsp://192.168.0.108:8554/vislbox-business" placeholder="rtsp://... 或视频文件路径" title="RTSP URL 或视频文件路径">
+  <label title="只调亮编辑器预览，不改 regions.json 和检测逻辑">亮度 <input id="bgBrightness" type="range" min="70" max="180" value="120"></label>
+  <span class="spacer"></span>
+  <input id="apiBase" class="api-input" type="text" placeholder="API: 当前页面" title="region-server 地址，例如 http://192.168.0.108:9090 或 http://127.0.0.1:19090">
+  <button id="btnFetchRegions" title="从板端加载 regions.json">📥 拉取</button>
+  <button id="btnPushRegions" title="保存 regions.json 到板端">📤 推送</button>
+  <label><input type="checkbox" id="chkGrid" checked> Grid</label>
+  <span class="spacer"></span>
+  <button id="btnAdd" title="Add new region">＋ Region</button>
+  <button id="btnDel" class="danger" title="Delete selected region">✕ Delete</button>
+  <span style="color:#585b70;font-size:10px;">Del key</span>
+  <span class="filename" id="filename">untitled</span>
+  <span class="filepath" id="bgLabel"></span>
+  <span id="status"></span>
+</div>
+
+<div id="main">
+  <div id="canvas-wrap">
+    <canvas id="canvas"></canvas>
+    <div id="canvas-hint">
+      Drop a camera screenshot here · ⇧+click vertex = delete · Click edge = add vertex
+    </div>
+  </div>
+
+  <div id="panel">
+    <div id="region-tabs"></div>
+    <div id="form-scroll">
+      <div class="empty-state">
+        <div>
+          <div style="margin-bottom:12px;font-size:14px;color:#a6adc8;">Getting started</div>
+          <div style="margin-bottom:8px;"><step>1.</step> Drag a <strong>camera screenshot</strong> onto the canvas</div>
+          <div style="margin-bottom:8px;"><step>2.</step> Click <kbd>＋ Region</kbd> to draw a zone on the image</div>
+          <div style="margin-bottom:8px;"><step>3.</step> Or click <kbd>📂 Open</kbd> to load an existing regions.json</div>
+          <div style="margin-top:12px;color:#585b70;font-size:11px;">
+            Rect: drag corners · drag body to move<br>
+            Polygon: drag vertices · ⇧+click to delete · click edge to add
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="val-errors"></div>
+  </div>
+</div>
+
+<script>
+/* ══════════════════════════════════════════════════════════════════════════
+   Posevent zone event configuration tool
+   ══════════════════════════════════════════════════════════════════════════ */
+
+// ── Data model ─────────────────────────────────────────────────────────
+
+let regions = [];
+let selectedIdx = -1;
+let currentFile = null;        // File (or FileHandle) for save-back
+let currentFileHandle = null;  // FileSystemFileHandle when opened via showOpenFilePicker
+let dirty = false;
+let classMap = null;             // class_map from loaded JSON, preserved on export
+
+// Background image
+let bgImage = null;
+let bgFileName = "";
+let bgBrightness = 1.2;
+
+// Image display rect (pixel coords within canvas).  Set on each resize / bg load.
+let imgRect = {x: 0, y: 0, w: 1, h: 1}; // guard against div-by-zero
+
+function defaultRegion() {
+  return {
+    id: 1,
+    name: "",
+    type: "rect",
+    x: 0.2, y: 0.2, w: 0.3, h: 0.4,
+    vertices: [{x:0.2,y:0.2},{x:0.5,y:0.2},{x:0.5,y:0.6},{x:0.2,y:0.6}],
+    enabled: true,
+    classes: ["person"],
+    loitering_frames: 90,
+    max_occupancy: 0,
+    min_confidence: 0,
+    cooldown_frames: 0,
+    events: {
+      occupied:  {enabled: true, severity: "warn"},
+      empty:     {enabled: true, severity: "info"},
+      loitering: {enabled: true, severity: "critical"},
+      occupancy: {enabled: true, severity: "warn"}
+    }
+  };
+}
+
+function nextId() {
+  let max = 0;
+  for (let r of regions) if (r.id > max) max = r.id;
+  return max + 1;
+}
+
+function normalizeRegion(r) {
+  if (r.id == null) r.id = 1;
+  if (!r.name) r.name = "";
+  if (!r.type) r.type = "rect";
+  if (r.enabled == null) r.enabled = true;
+  if (!r.classes) r.classes = ["person"];
+  if (r.loitering_frames == null) r.loitering_frames = 90;
+  if (r.max_occupancy == null) r.max_occupancy = 0;
+  if (r.min_confidence == null) r.min_confidence = 0;
+  if (r.cooldown_frames == null) r.cooldown_frames = 0;
+  if (!r.events) {
+    r.events = {
+      occupied:  {enabled: true, severity: "warn"},
+      empty:     {enabled: true, severity: "info"},
+      loitering: {enabled: true, severity: "critical"},
+      occupancy: {enabled: true, severity: "warn"}
+    };
+  }
+  for (let k of ["occupied","empty","loitering","occupancy"]) {
+    if (!r.events[k]) r.events[k] = {enabled: true, severity: k==="loitering"?"critical":"info"};
+    if (r.events[k].enabled == null) r.events[k].enabled = true;
+    if (!r.events[k].severity) r.events[k].severity = k==="loitering"?"critical":"info";
+  }
+  if (r.type === "rect") {
+    if (r.x == null) r.x = 0.2;
+    if (r.y == null) r.y = 0.2;
+    if (r.w == null) r.w = 0.3;
+    if (r.h == null) r.h = 0.4;
+  }
+  if (r.type === "polygon" && (!r.vertices || r.vertices.length < 3)) {
+    r.vertices = [{x:0.2,y:0.2},{x:0.5,y:0.2},{x:0.5,y:0.6},{x:0.2,y:0.6}];
+  }
+  return r;
+}
+
+// ── Coordinate transforms (always relative to imgRect) ─────────────────
+
+function toNormX(px) { return (px - imgRect.x) / imgRect.w; }
+function toNormY(py) { return (py - imgRect.y) / imgRect.h; }
+function toPixelX(nx) { return imgRect.x + nx * imgRect.w; }
+function toPixelY(ny) { return imgRect.y + ny * imgRect.h; }
+
+function clamp01(v) { return Math.max(0, Math.min(1, v)); }
+
+// ── Canvas ─────────────────────────────────────────────────────────────
+
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+const wrap = document.getElementById("canvas-wrap");
+
+let W, H;  // canvas CSS pixel dimensions (logical)
+const PAD = 40;
+const HANDLE_R = 6;
+const HIT_R = 10;
+
+let dragState = null;
+
+function recomputeImgRect() {
+  const cw = W - 2*PAD;
+  const ch = H - 2*PAD;
+  if (bgImage) {
+    const imgA = bgImage.naturalWidth / bgImage.naturalHeight;
+    const areaA = cw / ch;
+    let dw, dh, dx, dy;
+    if (imgA > areaA) {
+      dw = cw; dh = cw / imgA;
+      dx = 0; dy = (ch - dh) / 2;
+    } else {
+      dh = ch; dw = ch * imgA;
+      dx = (cw - dw) / 2; dy = 0;
+    }
+    imgRect = {x: PAD + dx, y: PAD + dy, w: dw, h: dh};
+  } else {
+    imgRect = {x: PAD, y: PAD, w: cw, h: ch};
+  }
+}
+
+function resizeCanvas() {
+  const dpr = window.devicePixelRatio || 1;
+  W = wrap.clientWidth;
+  H = wrap.clientHeight;
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width = W + "px";
+  canvas.style.height = H + "px";
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  recomputeImgRect();
+  render();
+}
+
+// ── Validation ─────────────────────────────────────────────────────────
+
+function validateRegions() {
+  const errors = [];
+  const seenIds = new Set();
+  for (let i = 0; i < regions.length; i++) {
+    const r = regions[i];
+    if (seenIds.has(r.id)) {
+      errors.push(`Region #${i}: duplicate ID ${r.id}`);
+    }
+    seenIds.add(r.id);
+    // name is optional — not a blocking error
+    if (r.type === "rect") {
+      if (r.x < 0 || r.y < 0 || r.w <= 0 || r.h <= 0 || r.x + r.w > 1 || r.y + r.h > 1) {
+        errors.push(`Region #${r.id} "${r.name}": rect (${r.x.toFixed(3)},${r.y.toFixed(3)} ${r.w.toFixed(3)}x${r.h.toFixed(3)}) out of bounds [0,1]`);
+      }
+    }
+    if (r.type === "polygon") {
+      if (!r.vertices || r.vertices.length < 3) {
+        errors.push(`Region #${r.id} "${r.name}": polygon needs ≥3 vertices (has ${r.vertices?r.vertices.length:0})`);
+      } else {
+        for (let v = 0; v < r.vertices.length; v++) {
+          const vx = r.vertices[v];
+          if (vx.x < 0 || vx.x > 1 || vx.y < 0 || vx.y > 1) {
+            errors.push(`Region #${r.id} "${r.name}": vertex ${v} (${vx.x.toFixed(3)},${vx.y.toFixed(3)}) out of bounds [0,1]`);
+          }
+        }
+      }
+    }
+    if (r.min_confidence < 0 || r.min_confidence > 1) {
+      errors.push(`Region #${r.id} "${r.name}": min_confidence ${r.min_confidence} not in [0,1]`);
+    }
+    if (r.classes && r.classes.length === 0) {
+      errors.push(`Region #${r.id} "${r.name}": no classes specified`);
+    }
+    if (r.classes) {
+      for (let c = 0; c < r.classes.length; c++) {
+        if (!r.classes[c].trim()) {
+          errors.push(`Region #${r.id} "${r.name}": class #${c} is empty`);
+        }
+      }
+    }
+  }
+  return errors;
+}
+
+function showValidation() {
+  const errors = validateRegions();
+  const el = document.getElementById("val-errors");
+  if (errors.length === 0) {
+    el.classList.remove("show");
+    el.innerHTML = "";
+    return true;
+  }
+  el.innerHTML = `<div class="val-title">⚠ ${errors.length} issue${errors.length>1?"s":""} before save</div>` +
+    errors.map(e => `<div class="val-item">${e}</div>`).join("");
+  el.classList.add("show");
+  return false;
+}
+
+// ── Rendering ──────────────────────────────────────────────────────────
+
+function render() {
+  ctx.clearRect(0, 0, W, H);
+  const showGrid = document.getElementById("chkGrid").checked;
+
+  // 1. Background image
+  if (bgImage) {
+    ctx.save();
+    ctx.filter = `brightness(${bgBrightness})`;
+    ctx.drawImage(bgImage, imgRect.x, imgRect.y, imgRect.w, imgRect.h);
+    ctx.restore();
+    wrap.classList.add("has-bg");
+  } else {
+    wrap.classList.remove("has-bg");
+  }
+
+  // 2. Grid (aligned to imgRect)
+  if (showGrid) {
+    ctx.strokeStyle = bgImage ? "#ffffff18" : "#252540";
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 10; i++) {
+      ctx.beginPath();
+      ctx.moveTo(toPixelX(i/10), imgRect.y);
+      ctx.lineTo(toPixelX(i/10), imgRect.y + imgRect.h);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(imgRect.x, toPixelY(i/10));
+      ctx.lineTo(imgRect.x + imgRect.w, toPixelY(i/10));
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = bgImage ? "#ffffff60" : "#585b70";
+    ctx.font = "10px monospace";
+    ctx.textAlign = "center"; ctx.textBaseline = "top";
+    for (let i = 0; i <= 10; i+=2) ctx.fillText((i/10).toFixed(1), toPixelX(i/10), 2);
+    ctx.textAlign = "right"; ctx.textBaseline = "middle";
+    for (let i = 0; i <= 10; i+=2)
+      ctx.fillText((i/10).toFixed(1), Math.max(0, imgRect.x - 6), toPixelY(i/10));
+  }
+
+  // 3. Label showing image aspect ratio
+  if (bgImage) {
+    ctx.fillStyle = "#585b70";
+    ctx.font = "10px monospace";
+    ctx.textAlign = "left"; ctx.textBaseline = "bottom";
+    ctx.fillText(`${bgImage.naturalWidth}×${bgImage.naturalHeight}`, imgRect.x + 4, imgRect.y + imgRect.h - 4);
+  }
+
+  // 4. Regions
+  for (let idx = 0; idx < regions.length; idx++) {
+    const r = regions[idx];
+    const isSel = (idx === selectedIdx);
+    const col = isSel ? "#89b4fa" : regionColor(idx);
+    if (r.type === "rect") drawRect(r, col, isSel);
+    else if (r.type === "polygon") drawPoly(r, col, isSel);
+  }
+
+  showValidation();
+}
+
+function regionColor(idx) {
+  const p = ["#f38ba8","#fab387","#f9e2af","#a6e3a1","#89b4fa","#b4befe","#94e2d5","#cba6f7"];
+  return p[idx % p.length];
+}
+
+function drawRect(r, col, isSel) {
+  const x1 = toPixelX(r.x), y1 = toPixelY(r.y);
+  const x2 = toPixelX(r.x + r.w), y2 = toPixelY(r.y + r.h);
+  const cx = (x1+x2)/2, cy = (y1+y2)/2;
+
+  ctx.fillStyle = col + "28";
+  ctx.fillRect(x1, y1, x2-x1, y2-y1);
+  ctx.strokeStyle = col;
+  ctx.lineWidth = isSel ? 2.5 : 1.5;
+  ctx.strokeRect(x1, y1, x2-x1, y2-y1);
+
+  ctx.fillStyle = col;
+  ctx.font = "bold 12px sans-serif";
+  ctx.textAlign = "left"; ctx.textBaseline = "top";
+  ctx.fillText(`#${r.id}${r.name?" "+r.name:""}`, x1+4, y1+4);
+
+  if (isSel) {
+    for (let [hx, hy] of [[x1,y1],[x2,y1],[x2,y2],[x1,y2]]) {
+      ctx.beginPath(); ctx.arc(hx, hy, HANDLE_R, 0, Math.PI*2);
+      ctx.fillStyle = "#fff"; ctx.fill();
+      ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.stroke();
+    }
+    ctx.beginPath(); ctx.arc(cx, cy, 4, 0, Math.PI*2);
+    ctx.fillStyle = col; ctx.fill();
+  }
+
+  if (r.enabled === false) {
+    ctx.fillStyle = "rgba(0,0,0,0.4)";
+    ctx.fillRect(x1, y1, x2-x1, y2-y1);
+    ctx.fillStyle = "#cdd6f4";
+    ctx.font = "bold 11px sans-serif";
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText("DISABLED", (x1+x2)/2, (y1+y2)/2);
+  }
+}
+
+function drawPoly(r, col, isSel) {
+  if (!r.vertices || r.vertices.length < 3) return;
+  const pts = r.vertices.map(v => ({x: toPixelX(v.x), y: toPixelY(v.y)}));
+  const n = pts.length;
+
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < n; i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.closePath();
+  ctx.fillStyle = col + "28";
+  ctx.fill();
+  ctx.strokeStyle = col;
+  ctx.lineWidth = isSel ? 2.5 : 1.5;
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < n; i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.closePath();
+  ctx.stroke();
+
+  for (let i = 0; i < n; i++) {
+    ctx.beginPath(); ctx.arc(pts[i].x, pts[i].y, HANDLE_R, 0, Math.PI*2);
+    ctx.fillStyle = isSel ? "#fff" : col; ctx.fill();
+    if (isSel) { ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.stroke(); }
+  }
+
+  if (isSel) {
+    for (let i = 0; i < n; i++) {
+      const j = (i+1) % n;
+      ctx.beginPath();
+      ctx.arc((pts[i].x+pts[j].x)/2, (pts[i].y+pts[j].y)/2, 3, 0, Math.PI*2);
+      ctx.fillStyle = col + "66"; ctx.fill();
+    }
+  }
+
+  const cx = pts.reduce((s,p)=>s+p.x,0)/n;
+  const cy = pts.reduce((s,p)=>s+p.y,0)/n;
+  ctx.fillStyle = col;
+  ctx.font = "bold 12px sans-serif";
+  ctx.textAlign = "center"; ctx.textBaseline = "bottom";
+  ctx.fillText(`#${r.id}${r.name?" "+r.name:""}`, cx, cy-4);
+
+  if (r.enabled === false) {
+    ctx.fillStyle = "rgba(0,0,0,0.4)";
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < n; i++) ctx.lineTo(pts[i].x, pts[i].y);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "#cdd6f4";
+    ctx.font = "bold 11px sans-serif";
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText("DISABLED", cx, cy);
+  }
+}
+
+// ── Hit testing ────────────────────────────────────────────────────────
+
+function hitTest(mx, my) {
+  if (selectedIdx >= 0 && selectedIdx < regions.length) {
+    const r = regions[selectedIdx];
+    if (r.type === "rect") {
+      for (let i = 0; i < 4; i++) {
+        const pts = [[r.x,r.y],[r.x+r.w,r.y],[r.x+r.w,r.y+r.h],[r.x,r.y+r.h]];
+        const hx = toPixelX(pts[i][0]), hy = toPixelY(pts[i][1]);
+        if (Math.hypot(mx-hx, my-hy) < HIT_R)
+          return {type:"handle", regionIdx: selectedIdx, vertexIdx: i};
+      }
+    } else if (r.type === "polygon" && r.vertices) {
+      for (let i = 0; i < r.vertices.length; i++) {
+        const hx = toPixelX(r.vertices[i].x), hy = toPixelY(r.vertices[i].y);
+        if (Math.hypot(mx-hx, my-hy) < HIT_R)
+          return {type:"handle", regionIdx: selectedIdx, vertexIdx: i};
+      }
+      const n = r.vertices.length;
+      for (let i = 0; i < n; i++) {
+        const j = (i+1) % n;
+        const emx = (toPixelX(r.vertices[i].x)+toPixelX(r.vertices[j].x))/2;
+        const emy = (toPixelY(r.vertices[i].y)+toPixelY(r.vertices[j].y))/2;
+        if (Math.hypot(mx-emx, my-emy) < HIT_R)
+          return {type:"edge", regionIdx: selectedIdx, edgeIdx: i};
+      }
+    }
+  }
+
+  for (let idx = regions.length - 1; idx >= 0; idx--) {
+    const r = regions[idx];
+    const nx = toNormX(mx), ny = toNormY(my);
+    if (r.type === "rect") {
+      if (nx >= r.x && nx <= r.x+r.w && ny >= r.y && ny <= r.y+r.h)
+        return {type:"region", regionIdx: idx};
+    } else if (r.type === "polygon" && r.vertices && r.vertices.length >= 3) {
+      if (pointInPoly(nx, ny, r.vertices))
+        return {type:"region", regionIdx: idx};
+    }
+  }
+  return null;
+}
+
+function pointInPoly(px, py, verts) {
+  let inside = false;
+  const n = verts.length;
+  for (let i = 0, j = n-1; i < n; j = i++) {
+    const xi = verts[i].x, yi = verts[i].y;
+    const xj = verts[j].x, yj = verts[j].y;
+    if (((yi > py) !== (yj > py)) &&
+        (px < (xj - xi) * (py - yi) / (yj - yi) + xi))
+      inside = !inside;
+  }
+  return inside;
+}
+
+// ── Mouse events ───────────────────────────────────────────────────────
+
+canvas.addEventListener("mousedown", (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  const hit = hitTest(mx, my);
+
+  if (hit && hit.type === "handle" && e.shiftKey) {
+    const r = regions[hit.regionIdx];
+    if (r.type === "polygon" && r.vertices.length > 3) {
+      r.vertices.splice(hit.vertexIdx, 1);
+      dirty = true;
+      render(); updateForm(); return;
+    }
+  }
+
+  if (hit && hit.type === "handle") {
+    const r = regions[hit.regionIdx];
+    selectedIdx = hit.regionIdx; updateTabs();
+    dragState = {
+      type: r.type === "rect" ? "rectHandle" : "polyHandle",
+      regionIdx: hit.regionIdx,
+      vertexIdx: hit.vertexIdx,
+      startX: mx, startY: my,
+      orig: JSON.parse(JSON.stringify(r))
+    };
+    canvas.style.cursor = "grabbing";
+    render(); updateForm();
+  } else if (hit && hit.type === "edge") {
+    const r = regions[hit.regionIdx];
+    const j = (hit.edgeIdx+1) % r.vertices.length;
+    r.vertices.splice(hit.edgeIdx+1, 0, {
+      x: (r.vertices[hit.edgeIdx].x + r.vertices[j].x)/2,
+      y: (r.vertices[hit.edgeIdx].y + r.vertices[j].y)/2
+    });
+    selectedIdx = hit.regionIdx; updateTabs();
+    dragState = {
+      type: "polyHandle", regionIdx: selectedIdx,
+      vertexIdx: hit.edgeIdx+1,
+      startX: mx, startY: my,
+      orig: JSON.parse(JSON.stringify(r))
+    };
+    canvas.style.cursor = "grabbing";
+    render(); updateForm();
+  } else if (hit && hit.type === "region") {
+    selectedIdx = hit.regionIdx; updateTabs();
+    const r = regions[selectedIdx];
+    // P0 FIX: save orig so move drag can read r.w/r.h for clamping
+    const orig = JSON.parse(JSON.stringify(r));
+    dragState = {
+      type: "move", regionIdx: selectedIdx,
+      startX: mx, startY: my, orig: orig
+    };
+    if (r.type === "rect") {
+      dragState.startNX = r.x;
+      dragState.startNY = r.y;
+    } else if (r.type === "polygon" && r.vertices) {
+      dragState.startVerts = r.vertices.map(v => ({x:v.x, y:v.y}));
+    }
+    canvas.style.cursor = "grabbing";
+    render(); updateForm();
+  } else {
+    selectedIdx = -1; updateTabs();
+    render(); updateForm();
+  }
+});
+
+canvas.addEventListener("mousemove", (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+
+  if (dragState) {
+    const dx = mx - dragState.startX;
+    const dy = my - dragState.startY;
+    const dnx = dx / imgRect.w;
+    const dny = dy / imgRect.h;
+    const r = regions[dragState.regionIdx];
+    if (!r) return;
+
+    if (dragState.type === "rectHandle") {
+      const o = dragState.orig;
+      const nx = clamp01(toNormX(mx));
+      const ny = clamp01(toNormY(my));
+      const vi = dragState.vertexIdx;
+      if (vi === 0) {
+        r.x = Math.min(nx, o.x+o.w-0.01);
+        r.y = Math.min(ny, o.y+o.h-0.01);
+        r.w = o.x+o.w - r.x;
+        r.h = o.y+o.h - r.y;
+      } else if (vi === 1) {
+        r.x = o.x;
+        r.y = Math.min(ny, o.y+o.h-0.01);
+        r.w = Math.max(nx - o.x, 0.01);
+        r.h = o.y+o.h - r.y;
+      } else if (vi === 2) {
+        r.x = o.x; r.y = o.y;
+        r.w = Math.max(nx - o.x, 0.01);
+        r.h = Math.max(ny - o.y, 0.01);
+      } else if (vi === 3) {
+        r.x = Math.min(nx, o.x+o.w-0.01);
+        r.y = o.y;
+        r.w = o.x+o.w - r.x;
+        r.h = Math.max(ny - o.y, 0.01);
+      }
+      dirty = true; render(); updateForm();
+    } else if (dragState.type === "polyHandle") {
+      r.vertices[dragState.vertexIdx].x = clamp01(toNormX(mx));
+      r.vertices[dragState.vertexIdx].y = clamp01(toNormY(my));
+      dirty = true; render(); updateForm();
+    } else if (dragState.type === "move") {
+      if (r.type === "rect") {
+        // P0 FIX: use dragState.orig.w/h (saved at mousedown)
+        const maxX = 1 - dragState.orig.w;
+        const maxY = 1 - dragState.orig.h;
+        r.x = clamp01(dragState.startNX + dnx);
+        r.y = clamp01(dragState.startNY + dny);
+        // Clamp to keep rect within [0,1]
+        r.x = Math.min(r.x, maxX);
+        r.y = Math.min(r.y, maxY);
+        render(); updateForm();
+      } else if (r.type === "polygon" && dragState.startVerts) {
+        // Keep polygon within [0,1]: compute bounding box shift
+        const minX = Math.min(...r.vertices.map(v => v.x));
+        const minY = Math.min(...r.vertices.map(v => v.y));
+        const maxX = Math.max(...r.vertices.map(v => v.x));
+        const maxY = Math.max(...r.vertices.map(v => v.y));
+        const shiftX = clamp01(dragState.startVerts[0].x + dnx) - r.vertices[0].x;
+        const shiftY = clamp01(dragState.startVerts[0].y + dny) - r.vertices[0].y;
+        // Conservative: shift all by same delta, clamp each
+        for (let i = 0; i < r.vertices.length; i++) {
+          r.vertices[i].x = clamp01(dragState.startVerts[i].x + dnx);
+          r.vertices[i].y = clamp01(dragState.startVerts[i].y + dny);
+        }
+        render(); updateForm();
+      }
+    }
+    return;
+  }
+
+  const hit = hitTest(mx, my);
+  if (hit && hit.type === "handle") canvas.style.cursor = e.shiftKey ? "crosshair" : "grab";
+  else if (hit && hit.type === "edge") canvas.style.cursor = "copy";
+  else if (hit && hit.type === "region") canvas.style.cursor = "pointer";
+  else canvas.style.cursor = bgImage ? "crosshair" : "default";
+});
+
+canvas.addEventListener("mouseup", () => { endDrag(); });
+canvas.addEventListener("mouseleave", () => { endDrag(); });
+
+function endDrag() {
+  if (dragState) { dirty = true; dragState = null; canvas.style.cursor = "default"; render(); updateForm(); }
+}
+
+// ── Drag-and-drop background image ─────────────────────────────────────
+
+wrap.addEventListener("dragover", (e) => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; });
+wrap.addEventListener("drop", (e) => {
+  e.preventDefault();
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith("image/")) loadBgImage(file);
+});
+
+// ── Background image ───────────────────────────────────────────────────
+
+function loadBgImage(file) {
+  return new Promise((resolve, reject) => {
+    if (!file || !file.type.startsWith("image/")) {
+      reject(new Error("not an image"));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("read failed"));
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("image decode failed"));
+      img.onload = () => {
+        bgImage = img;
+        bgFileName = file.name;
+        document.getElementById("bgLabel").textContent = "📷 " + file.name;
+        recomputeImgRect();
+        render();
+        resolve();
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+// ── Form ───────────────────────────────────────────────────────────────
+
+function updateForm() {
+  const scroll = document.getElementById("form-scroll");
+  if (selectedIdx < 0 || selectedIdx >= regions.length) {
+    scroll.innerHTML = `<div class="empty-state">Select a region on the canvas<br>or click ＋ Region to add one</div>`;
+    return;
+  }
+  const r = regions[selectedIdx];
+
+  let html = `
+  <div class="form-section">
+    <h3>General</h3>
+    <div class="form-row">
+      <label>ID</label>
+      <input type="number" class="wide" id="f-id" min="0" value="${r.id}">
+    </div>
+    <div class="form-row">
+      <label>Name</label>
+      <input type="text" id="f-name" value="${escHtml(r.name||"")}" placeholder="doorway">
+    </div>
+    <div class="form-row">
+      <label>Type</label>
+      <select id="f-type">
+        <option value="rect" ${r.type==="rect"?"selected":""}>Rectangle</option>
+        <option value="polygon" ${r.type==="polygon"?"selected":""}>Polygon</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label>Enable</label>
+      <input type="checkbox" id="f-enabled" ${r.enabled===false?"":"checked"}>
+    </div>
+  </div>
+  <div class="form-section">
+    <h3>Geometry (normalized 0–1)</h3>`;
+
+  if (r.type === "rect") {
+    html += `
+    <div class="form-row">
+      <label>X</label><input type="number" class="wide" id="f-rx" min="0" max="1" step="0.01" value="${r.x.toFixed(3)}">
+      <label>Y</label><input type="number" class="wide" id="f-ry" min="0" max="1" step="0.01" value="${r.y.toFixed(3)}">
+    </div>
+    <div class="form-row">
+      <label>W</label><input type="number" class="wide" id="f-rw" min="0.01" max="1" step="0.01" value="${r.w.toFixed(3)}">
+      <label>H</label><input type="number" class="wide" id="f-rh" min="0.01" max="1" step="0.01" value="${r.h.toFixed(3)}">
+    </div>`;
+  } else {
+    for (let i = 0; i < (r.vertices||[]).length; i++) {
+      const v = r.vertices[i];
+      html += `<div class="form-row">
+        <label style="width:auto;font-family:monospace">V${i}</label>
+        <input type="number" class="wide" data-vidx="${i}" data-axis="x" min="0" max="1" step="0.01" value="${v.x.toFixed(3)}">
+        <input type="number" class="wide" data-vidx="${i}" data-axis="y" min="0" max="1" step="0.01" value="${v.y.toFixed(3)}">
+        <span class="class-tag"><span class="remove" data-delv="${i}">✕</span></span>
+      </div>`;
+    }
+    html += `<div style="font-size:11px;color:#89b4fa;cursor:pointer" id="f-add-v">＋ Add vertex</div>`;
+  }
+
+  html += `
+  </div>
+  <div class="form-section">
+    <h3>Rules</h3>
+    <div class="form-row">
+      <label style="width:100px">Classes</label>
+      <div class="class-tags" id="f-classes"></div>
+    </div>
+    <div class="form-row">
+      <label style="width:100px">Add class</label>
+      <input type="text" id="f-class-input" placeholder="person" style="width:80px">
+      <span class="class-add" id="f-class-add">＋</span>
+    </div>
+    <div class="form-row">
+      <label style="width:100px">Loitering</label>
+      <input type="number" class="wide" id="f-loiter" min="0" value="${r.loitering_frames}">
+      <span class="hint">frames</span>
+    </div>
+    <div class="form-row">
+      <label style="width:100px">Max Occupancy</label>
+      <input type="number" class="wide" id="f-maxocc" min="0" value="${r.max_occupancy}">
+      <span class="hint">0 = no limit</span>
+    </div>
+    <div class="form-row">
+      <label style="width:100px">Min Confidence</label>
+      <input type="number" class="wide" id="f-minconf" min="0" max="1" step="0.05" value="${r.min_confidence.toFixed(2)}">
+    </div>
+    <div class="form-row">
+      <label style="width:100px">Cooldown</label>
+      <input type="number" class="wide" id="f-cooldown" min="0" value="${r.cooldown_frames}">
+      <span class="hint">frames</span>
+    </div>
+  </div>
+  <div class="form-section">
+    <h3>Events</h3>
+    <div class="event-rules">
+      ${eventRuleHtml("occupied", r.events.occupied)}
+      ${eventRuleHtml("empty", r.events.empty)}
+      ${eventRuleHtml("loitering", r.events.loitering)}
+      ${eventRuleHtml("occupancy", r.events.occupancy)}
+    </div>
+  </div>`;
+
+  scroll.innerHTML = html;
+  bindFormEvents(r);
+  updateClassTags(r);
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+function eventRuleHtml(name, rule) {
+  return `<div class="event-rule">
+    <span class="ev-name">${name}</span>
+    <input type="checkbox" data-ev="${name}" ${rule.enabled?"checked":""}>
+    <select data-ev="${name}">
+      <option value="info" ${rule.severity==="info"?"selected":""}>info</option>
+      <option value="warn" ${rule.severity==="warn"?"selected":""}>warn</option>
+      <option value="critical" ${rule.severity==="critical"?"selected":""}>critical</option>
+    </select>
+  </div>`;
+}
+
+function updateClassTags(r) {
+  const c = document.getElementById("f-classes");
+  if (!c) return;
+  c.innerHTML = (r.classes||[]).map((s,i) =>
+    `<span class="class-tag">${escHtml(s)} <span class="remove" data-rmclass="${i}">✕</span></span>`
+  ).join("");
+}
+
+function bindFormEvents(r) {
+  const idx = selectedIdx;
+  if (idx < 0) return;
+  const bind = (id, fn) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener("input", () => { if (selectedIdx===idx) { fn(el); dirty=true; render(); }});
+  };
+  const bindChg = (id, fn) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener("change", () => { if (selectedIdx===idx) { fn(el); dirty=true; render(); }});
+  };
+  const bindClick = (id, fn) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener("click", (e) => { if (selectedIdx===idx) { fn(e); dirty=true; render(); }});
+  };
+
+  bind("f-id", el => { r.id = parseInt(el.value)||0; updateTabs(); });
+  bind("f-name", el => { r.name = el.value; updateTabs(); render(); });
+  bindChg("f-type", el => {
+    if (el.value === "rect") {
+      r.type = "rect";
+      if (r.x == null) r.x = 0.2;
+      if (r.y == null) r.y = 0.2;
+      if (r.w == null) r.w = 0.3;
+      if (r.h == null) r.h = 0.4;
+    } else {
+      r.type = "polygon";
+      if (!r.vertices || r.vertices.length < 3)
+        r.vertices = [{x:0.2,y:0.2},{x:0.5,y:0.2},{x:0.5,y:0.6},{x:0.2,y:0.6}];
+    }
+    updateForm(); render();
+  });
+  bindChg("f-enabled", el => { r.enabled = el.checked; render(); });
+  bind("f-rx", el => { r.x = clamp01(parseFloat(el.value)||0); render(); });
+  bind("f-ry", el => { r.y = clamp01(parseFloat(el.value)||0); render(); });
+  bind("f-rw", el => { r.w = Math.max(0.01, parseFloat(el.value)||0.01); render(); });
+  bind("f-rh", el => { r.h = Math.max(0.01, parseFloat(el.value)||0.01); render(); });
+  bind("f-loiter", el => { r.loitering_frames = parseInt(el.value)||0; });
+  bind("f-maxocc", el => { r.max_occupancy = parseInt(el.value)||0; });
+  bind("f-minconf", el => { r.min_confidence = clamp01(parseFloat(el.value)||0); });
+  bind("f-cooldown", el => { r.cooldown_frames = parseInt(el.value)||0; });
+
+  document.querySelectorAll("[data-vidx]").forEach(el => {
+    el.addEventListener("input", () => {
+      if (selectedIdx!==idx) return;
+      const vi = parseInt(el.dataset.vidx);
+      const axis = el.dataset.axis;
+      const val = clamp01(parseFloat(el.value)||0);
+      if (r.vertices && vi < r.vertices.length) { r.vertices[vi][axis] = val; dirty=true; render(); }
+    });
+  });
+  document.querySelectorAll("[data-delv]").forEach(el => {
+    el.addEventListener("click", () => {
+      if (selectedIdx!==idx) return;
+      const vi = parseInt(el.dataset.delv);
+      if (r.type==="polygon" && r.vertices.length>3) { r.vertices.splice(vi,1); dirty=true; updateForm(); render(); }
+    });
+  });
+  bindClick("f-add-v", () => {
+    if (r.type==="polygon") {
+      const last = r.vertices[r.vertices.length-1];
+      const first = r.vertices[0];
+      r.vertices.push({x:(last.x+first.x)/2, y:(last.y+first.y)/2});
+      updateForm(); render();
+    }
+  });
+  bindClick("f-class-add", () => {
+    const input = document.getElementById("f-class-input");
+    const val = (input.value||"").trim();
+    if (val && !(r.classes||[]).includes(val)) {
+      if (!r.classes) r.classes = [];
+      r.classes.push(val); input.value = "";
+      updateClassTags(r); render();
+    }
+  });
+  document.getElementById("f-class-input")?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") document.getElementById("f-class-add")?.click();
+  });
+  document.getElementById("f-classes")?.addEventListener("click", (e) => {
+    const rm = e.target.closest("[data-rmclass]");
+    if (rm && selectedIdx===idx) {
+      const ci = parseInt(rm.dataset.rmclass);
+      if (r.classes) { r.classes.splice(ci,1); updateClassTags(r); dirty=true; render(); }
+    }
+  });
+  document.querySelectorAll("[data-ev]").forEach(el => {
+    const evName = el.dataset.ev;
+    if (el.type === "checkbox") el.addEventListener("change", () => { if (selectedIdx===idx) { r.events[evName].enabled = el.checked; dirty=true; }});
+    else if (el.tagName === "SELECT") el.addEventListener("change", () => { if (selectedIdx===idx) { r.events[evName].severity = el.value; dirty=true; }});
+  });
+}
+
+// ── Region tabs ────────────────────────────────────────────────────────
+
+function updateTabs() {
+  const c = document.getElementById("region-tabs");
+  c.innerHTML = regions.map((r,i) =>
+    `<div class="region-tab${i===selectedIdx?" active":""}" data-idx="${i}">#${r.id}${r.name?" "+escHtml(r.name):""}</div>`
+  ).join("");
+  c.querySelectorAll(".region-tab").forEach(el => {
+    el.addEventListener("click", () => {
+      selectedIdx = parseInt(el.dataset.idx);
+      updateTabs(); updateForm(); render();
+    });
+  });
+}
+
+// ── File I/O ───────────────────────────────────────────────────────────
+
+function loadFromJson(jsonStr, fileName) {
+  try {
+    const data = JSON.parse(jsonStr);
+    let arr = data.regions;
+    if (!Array.isArray(arr)) throw new Error("Missing 'regions' array");
+    regions = arr.map(normalizeRegion);
+    classMap = data.class_map || null;
+    selectedIdx = regions.length > 0 ? 0 : -1;
+    dirty = false;
+    document.getElementById("filename").textContent = fileName || "loaded";
+    updateTabs(); updateForm(); render();
+    setStatus(`Loaded ${regions.length} regions`, "ok");
+  } catch (e) {
+    setStatus("Parse error: " + e.message, "err");
+  }
+}
+
+function exportJson() {
+  // The editor still displays legacy vislbox-only controls for compatibility,
+  // but the Posevent API accepts only the formal region schema.
+  const allowed = ["id", "name", "type", "x", "y", "w", "h",
+                   "vertices", "classes", "min_confidence"];
+  const cleanRegions = regions.map(region => {
+    const clean = {};
+    for (const key of allowed) {
+      if (region[key] !== undefined) clean[key] = region[key];
+    }
+    return clean;
+  });
+  const out = {
+    version: "1",
+    debounce: {entry_frames: 3, exit_frames: 5, cooldown_frames: 10},
+    regions: cleanRegions
+  };
+  return JSON.stringify(out, null, 2) + "\n";
+}
+
+// ── Save: try File System Access API, fallback to download ─────────────
+
+async function saveJson() {
+  if (!dirty) { setStatus("No changes to save", "ok"); return; }
+  const errors = validateRegions();
+  if (errors.length > 0) {
+    showValidation();
+    setStatus(`${errors.length} issue${errors.length>1?"s":""} — fix before saving`, "err");
+    return;
+  }
+
+  const json = exportJson();
+
+  // Silent write-back when opened via showOpenFilePicker
+  if (currentFileHandle) {
+    try {
+      // Request write permission silently (Chrome caches grants within session)
+      if ((await currentFileHandle.requestPermission({mode: "write"})) === "granted") {
+        const writable = await currentFileHandle.createWritable();
+        await writable.write(json);
+        await writable.close();
+        dirty = false;
+        setStatus("Saved", "ok");
+        return;
+      }
+    } catch (e) {
+      // Fall through to download
+    }
+  }
+
+  // Fallback: download blob
+  const blob = new Blob([json], {type: "application/json"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = currentFile ? currentFile.name : "regions.json";
+  a.click();
+  URL.revokeObjectURL(url);
+  dirty = false;
+  setStatus("Downloaded — replace etc/regions.json manually", "warn");
+}
+
+function setStatus(msg, kind) {
+  const el = document.getElementById("status");
+  el.textContent = msg;
+  el.className = kind || "";
+}
+
+function apiUrl(path, params = null) {
+  const base = document.getElementById("apiBase").value.trim().replace(/\/+$/, "");
+  const url = new URL(path, base || window.location.origin);
+  if (params) {
+    for (const [k, v] of Object.entries(params)) {
+      if (v != null && String(v).trim() !== "") url.searchParams.set(k, String(v).trim());
+    }
+  }
+  return url.toString();
+}
+
+function loadToolSettings() {
+  const apiBase = localStorage.getItem("regionEditor.apiBase") || "";
+  const source = localStorage.getItem("regionEditor.captureSource") || "rtsp";
+  const device = localStorage.getItem("regionEditor.captureDevice") || "/dev/video41";
+  const savedUrl = localStorage.getItem("regionEditor.captureUrl");
+  const url = (!savedUrl || savedUrl === "rtsp://camera/stream")
+    ? "rtsp://192.168.0.108:8554/vislbox-business" : savedUrl;
+  const bright = localStorage.getItem("regionEditor.bgBrightness") || "120";
+  document.getElementById("apiBase").value = apiBase;
+  document.getElementById("captureSource").value = source;
+  document.getElementById("captureDevice").value = device;
+  document.getElementById("captureUrl").value = url;
+  document.getElementById("bgBrightness").value = bright;
+  bgBrightness = Number(bright) / 100;
+}
+
+function saveToolSetting(id, key) {
+  const el = document.getElementById(id);
+  localStorage.setItem(key, el.value);
+}
+
+// ── Buttons ────────────────────────────────────────────────────────────
+
+document.getElementById("btnLoad").addEventListener("click", async () => {
+  if (dirty && !confirm("Discard unsaved changes?")) return;
+
+  // Try showOpenFilePicker first for write-back capability
+  try {
+    if ("showOpenFilePicker" in window) {
+      const [handle] = await window.showOpenFilePicker({
+        types: [{description: "JSON", accept: {"application/json": [".json"]}}]
+      });
+      currentFileHandle = handle;
+      const file = await handle.getFile();
+      currentFile = file;
+      const reader = new FileReader();
+      reader.onload = (e) => loadFromJson(e.target.result, file.name);
+      reader.readAsText(file);
+      return;
+    }
+  } catch (e) {
+    if (e.name === "AbortError") return;
+    currentFileHandle = null;
+    // fall through
+  }
+
+  // Fallback to <input type="file">
+  const input = document.createElement("input");
+  input.type = "file"; input.accept = ".json";
+  input.onchange = () => {
+    const file = input.files[0]; if (!file) return;
+    currentFile = file;
+    currentFileHandle = null;
+    const reader = new FileReader();
+    reader.onload = (e) => loadFromJson(e.target.result, file.name);
+    reader.readAsText(file);
+  };
+  input.click();
+});
+
+document.getElementById("btnSave").addEventListener("click", saveJson);
+
+loadToolSettings();
+document.getElementById("apiBase").addEventListener("change", () => saveToolSetting("apiBase", "regionEditor.apiBase"));
+document.getElementById("captureSource").addEventListener("change", () => saveToolSetting("captureSource", "regionEditor.captureSource"));
+document.getElementById("captureDevice").addEventListener("change", () => saveToolSetting("captureDevice", "regionEditor.captureDevice"));
+document.getElementById("captureUrl").addEventListener("change", () => saveToolSetting("captureUrl", "regionEditor.captureUrl"));
+document.getElementById("bgBrightness").addEventListener("input", (e) => {
+  bgBrightness = Number(e.target.value) / 100;
+  localStorage.setItem("regionEditor.bgBrightness", e.target.value);
+  render();
+});
+
+document.getElementById("btnBg").addEventListener("click", () => {
+  const input = document.createElement("input");
+  input.type = "file"; input.accept = "image/*";
+  input.onchange = () => { const f = input.files[0]; if (f) loadBgImage(f); };
+  input.click();
+});
+
+// ── 从版端抓帧作为背景 ────────────────────────────────────────────────
+
+document.getElementById("btnCapture").addEventListener("click", async () => {
+  try {
+    const source = document.getElementById("captureSource").value;
+    const device = document.getElementById("captureDevice").value;
+    const sourceUrl = document.getElementById("captureUrl").value;
+    const params = {source};
+    if (source === "camera") params.device = device || "/dev/video41";
+    if (source === "rtsp") params.url = sourceUrl;
+    if (source === "file") params.path = sourceUrl || device;
+    const resp = await fetch(apiUrl("/snapshot.jpg", params), {cache: "no-store"});
+    if (!resp.ok) { setStatus(`抓帧失败: HTTP ${resp.status}`, "err"); return; }
+    const blob = await resp.blob();
+    if (!blob.type.startsWith("image/") || blob.size === 0) {
+      setStatus("抓帧失败: 返回内容不是有效图片", "err");
+      return;
+    }
+    const file = new File([blob], "camera-snapshot.jpg", {type: "image/jpeg"});
+    await loadBgImage(file);
+    setStatus("抓帧成功 — 已设为背景", "ok");
+  } catch (e) {
+    setStatus("抓帧失败: " + e.message + "（需要启动 region-server）", "err");
+  }
+});
+
+// ── 从板端拉取 regions.json ───────────────────────────────────────────
+
+document.getElementById("btnFetchRegions").addEventListener("click", async () => {
+  if (dirty && !confirm("当前有未保存的修改，确定丢弃？")) return;
+  try {
+    const resp = await fetch(apiUrl("/regions.json"), {cache: "no-store"});
+    if (!resp.ok) { setStatus(`拉取失败: HTTP ${resp.status}`, "err"); return; }
+    const text = await resp.text();
+    loadFromJson(text, "board:regions.json");
+    setStatus("已从板端加载 regions.json", "ok");
+  } catch (e) {
+    setStatus("拉取失败: " + e.message + "（需要启动 region-server）", "err");
+  }
+});
+
+// 页面打开后自动加载板端当前区域，避免画布初始为空。
+window.addEventListener("load", () => {
+  document.getElementById("btnFetchRegions").click();
+});
+
+// ── 推送 regions.json 到板端 ──────────────────────────────────────────
+
+document.getElementById("btnPushRegions").addEventListener("click", async () => {
+  const errors = validateRegions();
+  if (errors.length > 0) {
+    showValidation();
+    setStatus(`${errors.length} 个问题，请先修复`, "err");
+    return;
+  }
+  try {
+    const resp = await fetch(apiUrl("/regions.json"), {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: exportJson()
+    });
+    if (!resp.ok) { setStatus(`推送失败: HTTP ${resp.status}`, "err"); return; }
+    const result = await resp.json();
+    dirty = false;
+    setStatus(`已推送 ${result.count} 个区域 — 正在热加载...`, "ok");
+    // 自动触发 pipeline 热加载
+    try {
+      const reloadResp = await fetch(apiUrl("/reload"), {method: "POST"});
+      if (reloadResp.ok) {
+        setStatus(`已推送 ${result.count} 个区域并生效`, "ok");
+      } else {
+        setStatus(`已推送 ${result.count} 个区域，但热加载失败 (HTTP ${reloadResp.status})，需重启 pipeline`, "warn");
+      }
+    } catch (e) {
+      setStatus(`已推送 ${result.count} 个区域，但热加载请求失败: ${e.message}`, "warn");
+    }
+  } catch (e) {
+    setStatus("推送失败: " + e.message + "（需要启动 region-server）", "err");
+  }
+});
+
+document.getElementById("chkGrid").addEventListener("change", render);
+
+document.getElementById("btnAdd").addEventListener("click", () => {
+  const nr = defaultRegion();
+  nr.id = nextId();
+  regions.push(nr);
+  selectedIdx = regions.length - 1;
+  dirty = true;
+  updateTabs(); updateForm(); render();
+});
+
+document.getElementById("btnDel").addEventListener("click", () => {
+  if (selectedIdx < 0 || selectedIdx >= regions.length) return;
+  const r = regions[selectedIdx];
+  if (!confirm(`Delete region #${r.id}${r.name?" ("+r.name+")":""}?`)) return;
+  regions.splice(selectedIdx, 1);
+  selectedIdx = Math.min(selectedIdx, regions.length - 1);
+  dirty = true;
+  updateTabs(); updateForm(); render();
+  setStatus(`Deleted region #${r.id}`, "ok");
+});
+
+// ── Keyboard shortcuts ─────────────────────────────────────────────────
+
+document.addEventListener("keydown", (e) => {
+  if ((e.ctrlKey||e.metaKey) && e.key==="o") { e.preventDefault(); document.getElementById("btnLoad").click(); }
+  if ((e.ctrlKey||e.metaKey) && e.key==="s") { e.preventDefault(); saveJson(); }
+  if ((e.key==="Delete"||e.key==="Backspace") &&
+      document.activeElement?.tagName !== "INPUT" && document.activeElement?.tagName !== "SELECT") {
+    e.preventDefault();
+    document.getElementById("btnDel").click();
+  }
+});
+
+// ── Init ───────────────────────────────────────────────────────────────
+
+window.addEventListener("resize", resizeCanvas);
+resizeCanvas();
+</script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -eu
+
+URL="${1:?usage: run-annotated-framebuffer <rtsp-url> [device] [width] [height]}"
+DEVICE="${2:-/dev/fb0}"
+WIDTH="${3:-1920}"
+HEIGHT="${4:-1080}"
+
+trap 'exit 0' INT TERM
+while :; do
+  ffmpeg -hide_banner -loglevel warning \
+    -rtsp_transport tcp -i "$URL" \
+    -vf "scale=${WIDTH}:${HEIGHT}" -pix_fmt bgra \
+    -f fbdev "$DEVICE" || true
+  sleep 1
+done

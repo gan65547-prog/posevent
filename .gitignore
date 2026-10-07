@@ -1,0 +1,12 @@
+build/
+build-*/
+cpp/build/
+__pycache__/
+*.pyc
+.DS_Store
+*.log
+artifacts/*
+!artifacts/.gitkeep
+# The board model is part of the self-contained deployment package.
+models/README.md
+artifacts/runtime/

@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+set -eu
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+STATE_DIR="${POSEVENT_STATE_DIR:-$ROOT/artifacts/runtime}"
+PID_FILE="$STATE_DIR/pipeline.pid"
+WATCHER_PID_FILE="$STATE_DIR/regions-watcher.pid"
+if [ ! -f "$PID_FILE" ]; then
+  if [ -f "$WATCHER_PID_FILE" ]; then
+    watcher_pid="$(cat "$WATCHER_PID_FILE")"
+    kill "$watcher_pid" 2>/dev/null || true
+    rm -f "$WATCHER_PID_FILE"
+  fi
+  echo "pipeline is not running"
+  exit 0
+fi
+pid="$(cat "$PID_FILE")"
+if kill -0 "$pid" 2>/dev/null; then
+  # Stop the watchdog's descendants first so a runner or Wayland ffplay does
+  # not survive after the supervisor exits.
+  if command -v pkill >/dev/null 2>&1; then
+    pkill -TERM -P "$pid" 2>/dev/null || true
+  fi
+  kill "$pid"
+  for _ in 1 2 3 4 5; do
+    kill -0 "$pid" 2>/dev/null || break
+    sleep 1
+done
+if command -v pkill >/dev/null 2>&1; then
+  pkill -KILL -P "$pid" 2>/dev/null || true
+fi
+fi
+if kill -0 "$pid" 2>/dev/null; then
+  echo "pipeline did not stop: $pid" >&2
+  exit 1
+fi
+if [ -f "$WATCHER_PID_FILE" ]; then
+  watcher_pid="$(cat "$WATCHER_PID_FILE")"
+  kill "$watcher_pid" 2>/dev/null || true
+  rm -f "$WATCHER_PID_FILE"
+fi
+rm -f "$PID_FILE"
+echo "stopped posevent pipeline: $pid"

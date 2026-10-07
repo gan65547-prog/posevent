@@ -1,0 +1,17 @@
+{
+  "version": "1",
+  "debounce": {"entry_frames": 3, "exit_frames": 5, "cooldown_frames": 10},
+  "regions": [
+    {
+      "id": 1,
+      "name": "entrance",
+      "type": "rect",
+      "x": 0.20,
+      "y": 0.20,
+      "w": 0.40,
+      "h": 0.50,
+      "classes": ["person"],
+      "min_confidence": 0.25
+    }
+  ]
+}

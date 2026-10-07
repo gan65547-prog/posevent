@@ -1,0 +1,18 @@
+{
+  "version": "1",
+  "input": {
+    "type": "rtsp",
+    "url": "rtsp://192.168.0.108:8554/vislbox-business",
+    "width": 1920,
+    "height": 1080
+  },
+  "model": {
+    "name": "yolopose",
+    "path": "models/yolopose.rknn"
+  },
+  "regions": "configs/regions.json",
+  "display": {
+    "mode": "wayland",
+    "framebuffer": "/dev/fb0"
+  }
+}

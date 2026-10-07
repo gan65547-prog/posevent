@@ -1,0 +1,136 @@
+#!/usr/bin/env bash
+set -eu
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+STATE_DIR="${POSEVENT_STATE_DIR:-$ROOT/artifacts/runtime}"
+PID_FILE="$STATE_DIR/pipeline.pid"
+LOG_FILE="$STATE_DIR/pipeline.log"
+CONFIG="${POSEVENT_PIPELINE_CONFIG:-$ROOT/configs/pipeline.json}"
+BIN="${POSEVENT_PIPELINE_BIN:-}"
+ENTRYPOINT="${POSEVENT_ENTRYPOINT:-}"
+WATCHER_PID_FILE="$STATE_DIR/regions-watcher.pid"
+FRAMEBUFFER="${POSEVENT_FRAMEBUFFER:-}"
+WATCHDOG="${POSEVENT_WATCHDOG:-0}"
+RUN_TIMEOUT="${POSEVENT_RUN_TIMEOUT:-0}"
+
+mkdir -p "$STATE_DIR"
+if [ ! -f "$CONFIG" ]; then
+  echo "pipeline config not found: $CONFIG" >&2
+  exit 1
+fi
+
+if [ -z "$BIN" ]; then
+  for candidate in \
+    "$ROOT/build-onnx/pipeline/posevent_onnx_live" \
+    "$ROOT/build-core/pipeline/posevent_onnx_live" \
+    "$ROOT/build-rknn/pipeline/posevent_rknn_live"; do
+    if [ -x "$candidate" ]; then BIN="$candidate"; break; fi
+  done
+fi
+if [ -z "$BIN" ] || [ ! -x "$BIN" ]; then
+  echo "pipeline runner not found; set POSEVENT_PIPELINE_BIN to an independently built runner" >&2
+  exit 1
+fi
+if [ -n "$ENTRYPOINT" ] && [ ! -x "$ENTRYPOINT" ]; then
+  echo "posevent entrypoint not found: $ENTRYPOINT" >&2
+  exit 1
+fi
+
+readarray -t PIPELINE_ARGS < <(python3 - "$CONFIG" <<'PY'
+import json, sys
+with open(sys.argv[1], encoding="utf-8") as stream:
+    config = json.load(stream)
+source = config["input"]["url"]
+model = config["model"]["path"]
+regions = config.get("regions")
+if not source or not model:
+    raise SystemExit("pipeline config requires input.url and model.path")
+print(source)
+print(model)
+# The first production adapter accepts one normalized rectangular region.
+if isinstance(regions, dict):
+    region = regions
+else:
+    region = None
+if region:
+    print(str(region.get("x", 0.2)))
+    print(str(region.get("y", 0.2)))
+    print(str(region.get("w", 0.6)))
+    print(str(region.get("h", 0.6)))
+PY
+)
+
+if [ "${#PIPELINE_ARGS[@]}" -lt 2 ]; then
+  echo "pipeline config did not produce input/model arguments" >&2
+  exit 1
+fi
+
+# Deployment overrides keep the checked-in config portable while allowing a
+# board-specific camera/model pair without creating a second pipeline.
+if [ -n "${POSEVENT_INPUT_URL:-}" ]; then
+  PIPELINE_ARGS[0]="$POSEVENT_INPUT_URL"
+fi
+if [ -n "${POSEVENT_MODEL_PATH:-}" ]; then
+  PIPELINE_ARGS[1]="$POSEVENT_MODEL_PATH"
+fi
+
+RUN_ARGS=("${PIPELINE_ARGS[@]}")
+# The live runners enable their display path only when the optional display
+# argument is present. In Wayland mode it is a trigger only: the runner picks
+# WaylandDisplaySink and does not write this framebuffer device.
+if [ -n "$FRAMEBUFFER" ] || [ "${POSEVENT_DISPLAY_MODE:-}" = "wayland" ]; then
+  if [ -z "$FRAMEBUFFER" ]; then FRAMEBUFFER="/dev/fb0"; fi
+  RUN_ARGS+=("$FRAMEBUFFER")
+  RUN_ARGS+=("${POSEVENT_REGIONS_CONFIG:-$ROOT/configs/regions.json}")
+fi
+COMMAND=("$BIN" "${RUN_ARGS[@]}")
+if [ -n "$ENTRYPOINT" ]; then
+  COMMAND=("$ENTRYPOINT" pipeline "$BIN" "${RUN_ARGS[@]}")
+fi
+if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+  echo "pipeline already running: $(cat "$PID_FILE")"
+  exit 0
+fi
+
+export POSEVENT_REGIONS_CONFIG="${POSEVENT_REGIONS_CONFIG:-$ROOT/configs/regions.json}"
+export POSEVENT_REGIONS_CONFIG
+# Production runs continuously by default. Set a positive value explicitly
+# for a bounded smoke test.
+export POSEVENT_MAX_FRAMES="${POSEVENT_MAX_FRAMES:-0}"
+export POSEVENT_DISPLAY_MODE="${POSEVENT_DISPLAY_MODE:-}"
+
+run_once() {
+  if [ -n "$FRAMEBUFFER" ] && [ ! -w "$FRAMEBUFFER" ]; then
+    sudo -n env LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}" "${COMMAND[@]}"
+  else
+    "${COMMAND[@]}"
+  fi
+}
+
+if [ "$WATCHDOG" = "1" ]; then
+  # Restart the runner after a clean exit or a bounded hang. This is useful on
+  # boards whose decoder/NPU runtime occasionally stalls, while preserving the
+  # same PID file and log for operators.
+  if [ -n "$FRAMEBUFFER" ] && [ ! -w "$FRAMEBUFFER" ]; then
+    nohup "$ROOT/tools/posevent-watchdog" sudo -n env \
+      LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}" "${COMMAND[@]}" \
+      >>"$LOG_FILE" 2>&1 &
+  else
+    nohup "$ROOT/tools/posevent-watchdog" "${COMMAND[@]}" \
+      >>"$LOG_FILE" 2>&1 &
+  fi
+else
+  if [ -n "$FRAMEBUFFER" ] && [ ! -w "$FRAMEBUFFER" ]; then
+    nohup sudo -n env LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}" \
+      "${COMMAND[@]}" >>"$LOG_FILE" 2>&1 &
+  else
+    nohup "${COMMAND[@]}" >>"$LOG_FILE" 2>&1 &
+  fi
+fi
+echo $! >"$PID_FILE"
+if [ -n "${POSEVENT_RELOAD_COMMAND:-}" ]; then
+  nohup "$ROOT/tools/watch-regions" "$ROOT/configs/regions.json" \
+    "$POSEVENT_RELOAD_COMMAND" >>"$LOG_FILE" 2>&1 &
+  echo $! >"$WATCHER_PID_FILE"
+fi
+echo "started posevent pipeline: $(cat "$PID_FILE")"

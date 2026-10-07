@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+set -eu
+
+CONFIG="${1:?usage: watch-regions <regions.json> <reload-command> [interval-seconds]}"
+RELOAD_COMMAND="${2:?usage: watch-regions <regions.json> <reload-command> [interval-seconds]}"
+INTERVAL="${3:-1}"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+VALIDATOR="$ROOT/tools/validate-regions.py"
+
+validate() { python3 "$VALIDATOR" "$CONFIG" >/dev/null; }
+validate
+last_mtime=""
+while :; do
+  current_mtime="$(stat -c '%Y:%s' "$CONFIG" 2>/dev/null || stat -f '%m:%z' "$CONFIG" 2>/dev/null || true)"
+  if [ -n "$current_mtime" ] && [ "$current_mtime" != "$last_mtime" ]; then
+    if validate; then
+      if sh -c "$RELOAD_COMMAND \"$CONFIG\""; then
+        last_mtime="$current_mtime"
+        echo "regions reload applied: $CONFIG"
+      else
+        echo "regions reload rejected by consumer: $CONFIG" >&2
+      fi
+    else
+      echo "regions reload rejected by schema: $CONFIG" >&2
+    fi
+  fi
+  sleep "$INTERVAL"
+done

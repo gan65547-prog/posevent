@@ -1,0 +1,4 @@
+# Standalone board-test input only.  It is not used by production startup.
+paths:
+  posevent-input:
+    source: publisher

@@ -1,0 +1,7 @@
+# Standalone board-test input for the Mac business-flow regression video.
+# This is test transport only; production pipeline does not depend on MediaMTX.
+paths:
+  posevent-input:
+    source: publisher
+  vislbox-business:
+    source: publisher

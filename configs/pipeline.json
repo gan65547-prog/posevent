@@ -1,0 +1,6 @@
+{
+  "version": "1",
+  "input": {"type": "rtsp", "url": "rtsp://camera/stream", "width": 1280, "height": 720},
+  "model": {"name": "person", "path": "models/person.rknn"},
+  "regions": "configs/regions.json"
+}

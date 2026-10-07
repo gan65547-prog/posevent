@@ -1,0 +1,9 @@
+{"seq":1,"detections":[]}
+{"seq":2,"detections":[{"class":"person","score":0.95,"box":[0.30,0.30,0.10,0.30]}]}
+{"seq":3,"detections":[{"class":"person","score":0.95,"box":[0.30,0.30,0.10,0.30]}]}
+{"seq":4,"detections":[{"class":"person","score":0.95,"box":[0.30,0.30,0.10,0.30]}]}
+{"seq":5,"detections":[]}
+{"seq":6,"detections":[]}
+{"seq":7,"detections":[]}
+{"seq":8,"detections":[]}
+{"seq":9,"detections":[]}

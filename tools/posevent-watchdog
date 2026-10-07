@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -u
+
+if [ "$#" -lt 1 ]; then
+  echo "usage: posevent-watchdog <command> [args...]" >&2
+  exit 2
+fi
+
+delay="${POSEVENT_RESTART_DELAY:-1}"
+timeout_seconds="${POSEVENT_RUN_TIMEOUT:-0}"
+trap 'exit 0' TERM INT
+
+while :; do
+  echo "[watchdog] starting runner"
+  if [ "$timeout_seconds" -gt 0 ] && command -v timeout >/dev/null 2>&1; then
+    timeout "${timeout_seconds}s" "$@" || true
+  else
+    "$@" || true
+  fi
+  echo "[watchdog] runner stopped; restarting"
+  sleep "$delay"
+done
